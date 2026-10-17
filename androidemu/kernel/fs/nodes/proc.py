@@ -105,6 +105,8 @@ class ProcRootNode(VirtualDirNode):
             target_pid = int(name)
             if target_pid == self.vfs.ctx.pid or target_pid in getattr(self.vfs.ctx, "threads", set()):
                 return ProcPidDirNode(target_pid, self.vfs)
+            # fork 出来的子进程 pid 也允许访问（内容与父进程一致）
+            return ProcPidDirNode(target_pid, self.vfs)
 
         return None
 

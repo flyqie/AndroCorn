@@ -43,11 +43,12 @@ class SyscallsHandler:
 
                 if handler.name not in self.FILTER:
                     logging.debug(
-                        "Executing %s(%s) at %#x from %#x",
+                        "Executing %s(%s) at %#x from %#x tid=%d",
                         handler.name,
                         args_fmt,
                         pc,
                         lr,
+                        emu.pcb.current_tid,
                     )
 
             try:

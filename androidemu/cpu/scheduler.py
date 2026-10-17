@@ -25,7 +25,7 @@ class Task:
         "tls_ptr", "stack_base", "stack_size",
         "is_init", "is_main", "is_exit",
         "wakeup_time_us", "pending_regs", "signal_contexts",
-        "waiting_futex_addr"
+        "waiting_futex_addr", "proc_pid", "ppid"
     )
 
     def __init__(self):
@@ -43,6 +43,8 @@ class Task:
         self.waiting_futex_addr: Optional[int] = None
         self.pending_regs: Dict[int, int] = {}
         self.signal_contexts: List['UcContext'] = []
+        self.proc_pid: int = 0
+        self.ppid: int = 0
 
 
 class Scheduler:
@@ -110,6 +112,8 @@ class Scheduler:
     def _set_main_task(self, entry_point: int) -> None:
         tid = self._pid
         t = self._create_task(tid, self._registers.v_sp, None, True, 0)
+        t.proc_pid = tid
+        t.ppid = self._pcb.ppid
         t.entry = entry_point
         self._tasks_map[tid] = t
         self._ready_queue.append(tid)
@@ -175,6 +179,9 @@ class Scheduler:
         )
         t.stack_base = child_stack_base
         t.stack_size = stack_size
+        _parent = self._tasks_map.get(parent_tid)
+        t.proc_pid = child_tid
+        t.ppid = _parent.proc_pid if (_parent and _parent.proc_pid) else self._pcb.pid
 
         self._tasks_map[child_tid] = t
         self._ready_queue.append(child_tid)
@@ -210,6 +217,9 @@ class Scheduler:
                     pass
 
         t = self._create_task(tid, stack_ptr, child_ctx, False, tls_ptr)
+        _pt = self._tasks_map.get(parent_tid) or self._tasks_map.get(self._pcb.current_tid)
+        t.proc_pid = _pt.proc_pid if (_pt and _pt.proc_pid) else self._pcb.pid
+        t.ppid = _pt.ppid if _pt else self._pcb.ppid
         t.is_init = False
         self._tasks_map[tid] = t
         self._ready_queue.append(tid)
@@ -425,6 +435,12 @@ class Scheduler:
         except UcError as e:
             pos = self._registers.v_pc
             logging.error("Crash in thread %d at 0x%X: %s", tid, pos, e)
+            for _i in range(0, 30, 5):
+                logging.error("  " + "  ".join(
+                    "x%d=%#x" % (_i + _j, getattr(self._registers, "v_reg_%d" % (_i + _j)))
+                    for _j in range(5)
+                ))
+            logging.error("  sp=%#x lr=%#x", self._registers.v_sp, self._registers.v_lr)
             raise
 
         task.context = self._mu.context_save()

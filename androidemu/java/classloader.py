@@ -1,4 +1,5 @@
 from .class_def import JavaClassDef
+from .field_def import JavaFieldDef
 from .classes.java.lang.clazz import Class
 from .method_def import java_method_def
 
@@ -7,10 +8,14 @@ if TYPE_CHECKING:
     from androidemu.core.emulator import Emulator
     from androidemu.java.classes.java.lang.string import String
 
-class JavaClassLoader(metaclass=JavaClassDef, jvm_name='java/lang/ClassLoader'):
+class JavaClassLoader(metaclass=JavaClassDef, jvm_name='java/lang/ClassLoader',
+                      jvm_fields=[
+                          JavaFieldDef('pathList', 'Ldalvik/system/DexPathList;', False),
+                      ]):
     def __init__(self):
         self.class_by_id = dict()
         self.class_by_name = dict()
+        self.pathList = None
 
     @java_method_def(name='loadClass', args_list=['jstring'], signature='(Ljava/lang/String;)Ljava/lang/Class;', native=False)
     def loadClass(self, emu: 'Emulator', class_name: 'String'):

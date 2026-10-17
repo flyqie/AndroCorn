@@ -1,4 +1,5 @@
 from androidemu.java.class_def import JavaClassDef
+from androidemu.java.field_def import JavaFieldDef
 from androidemu.java.method_def import java_method_def
 from androidemu.java.jvm.constants import *
 from .string import *
@@ -13,12 +14,32 @@ if TYPE_CHECKING:
     from androidemu.core import Emulator
     from androidemu.java.classloader import JavaClassLoader
 
-class Class(metaclass=JavaClassDef, jvm_name='java/lang/Class'):
+class DexCache(metaclass=JavaClassDef, jvm_name='java/lang/DexCache',
+               jvm_fields=[
+                   JavaFieldDef('dexFile', 'I', False),
+                   JavaFieldDef('resolvedTypes', '[Ljava/lang/Class;', False),
+                   JavaFieldDef('resolvedMethods', '[Ljava/lang/reflect/Method;', False),
+                   JavaFieldDef('resolvedFields', '[Ljava/lang/reflect/Field;', False),
+                   JavaFieldDef('resolvedStrings', '[Ljava/lang/String;', False),
+               ]):
+    def __init__(self):
+        self.dexFile = 0
+        self.resolvedTypes = ObjectArray([])
+        self.resolvedMethods = ObjectArray([])
+        self.resolvedFields = ObjectArray([])
+        self.resolvedStrings = ObjectArray([])
+
+
+class Class(metaclass=JavaClassDef, jvm_name='java/lang/Class',
+            jvm_fields=[
+                JavaFieldDef('dexCache', 'Ljava/lang/DexCache;', False),
+            ]):
     _basic_types = ["Z", "B", "C", "D", "F", "I", "J", "S"]
     def __init__(self, pyclazz, class_loader):
         self.class_loader: 'JavaClassLoader' = class_loader
         self.__pyclazz = pyclazz
         self.__descriptor_represent = pyclazz.jvm_name
+        self.dexCache = DexCache()
     #
 
     @java_method_def(name='getClassLoader', signature='()Ljava/lang/ClassLoader;', native=False)

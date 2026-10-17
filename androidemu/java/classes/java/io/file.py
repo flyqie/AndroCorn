@@ -3,11 +3,15 @@ from androidemu.java.field_def import JavaFieldDef
 from androidemu.java.method_def import java_method_def, JavaMethodDef
 from ..lang.string import String
 
-class File(metaclass=JavaClassDef, jvm_name='java/io/File'):
+class File(metaclass=JavaClassDef, jvm_name='java/io/File',
+           jvm_fields=[
+               JavaFieldDef('path', 'Ljava/lang/String;', False),
+           ]):
     
     def __init__(self, path):
         assert type(path) == str
         self.pyobject = path
+        self.path = String(path)
     #
 
     @java_method_def(name='getPath', signature='()Ljava/lang/String;', native=False)

@@ -669,12 +669,22 @@ class JNIEnv:
         sig = helpers.read_utf8(emu.mu, sig_ptr)
         clazz = self.get_reference(clazz_idx)
 
+        if clazz is None or clazz.value is None:
+            logging.warning(
+                "GetFieldID on null class: name=%r sig=%r ref=%#x type=%s value=%r",
+                name, sig, clazz_idx, type(clazz).__name__,
+                getattr(clazz, "value", "<no value>"),
+            )
+            return 0
+
         class_obj = clazz.value
         pyclazz = class_obj.get_py_clazz()
 
         field = pyclazz.find_field(name, sig, False)
         if field is None:
+            logging.warning("GetFieldID missing: %s.%s (%s)", pyclazz.jvm_name, name, sig)
             raise RuntimeError(f"Could not find field ('{name}', '{sig}') in class {pyclazz.jvm_name}.")
+        logging.debug("GetFieldID %s.%s (%s) -> %d", pyclazz.jvm_name, name, sig, field.jvm_id)
         return 0 if field.ignore else field.jvm_id
 
     def __get_field_val(self, emu: "Emulator", obj_idx: int, field_id: int, is_wide: bool = False):
@@ -688,6 +698,9 @@ class JNIEnv:
             raise RuntimeError(f"Could not find field {field_id} in object {pyobj.jvm_name} by id.")
 
         v = getattr(pyobj, field.name)
+        logging.debug("GetField %s.%s -> %r", pyobj.__class__.__name__, field.name, v)
+        if v is None:
+            return 0
         if not is_wide:
             return v
         return (v & 0xFFFFFFFF, v >> 32)
@@ -721,6 +734,7 @@ class JNIEnv:
         if field is None:
             raise RuntimeError(f"Could not find field {field_id} in object {pyobj.jvm_name} by id.")
 
+        logging.debug("SetField %s.%s <- %#x (is_obj=%s)", pyobj.__class__.__name__, field.name, value, is_obj)
         v = self.jobject_to_pyobject(self.get_reference(value)) if is_obj else value
         setattr(pyobj, field.name, v)
 
@@ -765,6 +779,8 @@ class JNIEnv:
 
         field = pyclazz.find_field_by_id(field_id)
         v = field.static_value
+        if v is None:
+            return 0
         if not is_wide:
             return v
         return (v & 0xFFFFFFFF, v >> 32)
@@ -991,7 +1007,17 @@ class JNIEnv:
     @native_method
     def get_int_array_elements(self, emu: "Emulator", env): raise NotImplementedError()
     @native_method
-    def get_long_array_elements(self, emu: "Emulator", env): raise NotImplementedError()
+    def get_long_array_elements(self, emu: "Emulator", env, array_idx, is_copy_ptr):
+        if is_copy_ptr != 0:
+            try:
+                emu.mu.mem_write(is_copy_ptr, b"\x01")
+            except Exception:
+                pass
+        pyobj = self.jobject_to_pyobject(self.get_reference(array_idx))
+        items = pyobj.get_py_items()
+        buf = self.__libc.malloc(max(len(items), 1) * 8)
+        emu.mu.mem_write(buf, b"".join(struct.pack("<q", int(v)) for v in items) or b"\x00" * 8)
+        return buf
     @native_method
     def get_float_array_elements(self, emu: "Emulator", env): raise NotImplementedError()
     @native_method
@@ -1018,7 +1044,22 @@ class JNIEnv:
     @native_method
     def release_int_array_elements(self, emu: "Emulator", env): raise NotImplementedError()
     @native_method
-    def release_long_array_elements(self, emu: "Emulator", env): raise NotImplementedError()
+    def release_long_array_elements(self, emu: "Emulator", env, array_idx, elems, mode):
+        if elems == JAVA_NULL:
+            return
+        pyobj = self.jobject_to_pyobject(self.get_reference(array_idx))
+        items = pyobj.get_py_items()
+        if mode in (0, JNI_COMMIT) and items:
+            raw = bytes(emu.mu.mem_read(elems, len(items) * 8))
+            vals = list(struct.unpack("<%dq" % len(items), raw))
+            try:
+                pyobj.pyobject[:] = vals
+            except Exception:
+                pass
+        try:
+            self.__libc.free(elems)
+        except Exception:
+            pass
     @native_method
     def release_float_array_elements(self, emu: "Emulator", env): raise NotImplementedError()
     @native_method
@@ -1141,6 +1182,7 @@ class JNIEnv:
 
     @native_method
     def get_object_class(self, emu: "Emulator", env, obj_idx):
+        logging.debug("GetObjectClass(%#x) lr=%#x", obj_idx, emu.registers.v_lr)
         obj = self.get_reference(obj_idx)
         if obj is None:
             raise RuntimeError(f"get_object_class: cannot get class for obj_id {obj_idx}")

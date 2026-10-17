@@ -20,8 +20,20 @@ class ProcessSyscalls:
 
         self._tid_map = {}
 
-    def _getpid(self,  emu: 'Emulator'):  return emu.pcb.pid
-    def _getppid(self, emu: 'Emulator'):  return emu.pcb.ppid
+    @staticmethod
+    def _current_task(emu: 'Emulator'):
+        try:
+            return emu.scheduler._tasks_map.get(emu.pcb.current_tid)
+        except Exception:
+            return None
+
+    def _getpid(self,  emu: 'Emulator'):
+        t = self._current_task(emu)
+        return t.proc_pid if (t is not None and t.proc_pid) else emu.pcb.pid
+
+    def _getppid(self, emu: 'Emulator'):
+        t = self._current_task(emu)
+        return t.ppid if (t is not None and t.ppid) else emu.pcb.ppid
     def _getuid(self,  emu: 'Emulator'):  return emu.pcb.uid
     def _gettid(self,  emu: 'Emulator'):  return emu.pcb.current_tid
     def _geteuid(self, emu: 'Emulator'):  return 0

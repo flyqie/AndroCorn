@@ -1,4 +1,5 @@
 import logging
+import os
 
 from ....types import ptr_t
 from ....utils.memory import helpers
@@ -9,6 +10,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from androidemu.core import Emulator
     from androidemu.core.pcb import ProcessControlBlock
+
+#: 置 1 时忽略进程对自身的 SIGKILL。加固壳在反调试失败时会自杀，
+#: 脱壳分析需要在它自毁后继续跑完解密流程。
+IGNORE_SELF_KILL = os.environ.get("ANDROCORN_IGNORE_SELFKILL") == "1"
+
 
 class SignalSyscalls:
 
@@ -59,6 +65,9 @@ class SignalSyscalls:
             if self._deliver_signal(emu, sig):
                 return 0
 
+            if IGNORE_SELF_KILL:
+                logging.warning("self-kill (SIGKILL) ignored: ANDROCORN_IGNORE_SELFKILL=1")
+                return 0
             logging.error("self-kill detected (anti-debug?) and no handler registered")
             raise RuntimeError("Self-Kill Detected")
 

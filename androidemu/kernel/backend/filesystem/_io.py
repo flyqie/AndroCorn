@@ -1,6 +1,7 @@
+import logging
 from typing import TYPE_CHECKING
 
-from ....const.linux import AT_FDCWD, EINVAL, EFAULT
+from ....const.linux import AT_FDCWD, EBADF, EINVAL, EFAULT
 from ....types import ptr_t
 from ....utils.memory import helpers as memory_helpers
 
@@ -22,6 +23,7 @@ class FileSystemIO:
 
     def _openat(self, emu: 'Emulator', dfd: int, filename_ptr: int, flags: int, mode: int) -> int:
         path = memory_helpers.read_utf8(emu.mu, filename_ptr) if filename_ptr else ""
+        logging.debug("openat(%r, flags=%#x)", path, flags)
         norm_dfd = memory_helpers.normalize_dirfd(dfd)
         return emu.vfs.openat(norm_dfd, path, flags, mode)
 
@@ -33,6 +35,26 @@ class FileSystemIO:
         if ret > 0:
             emu.mu.mem_write(buf_addr, data)
         return ret
+
+    def _pread64(self, emu: 'Emulator', fd: int, buf_addr: int, count: int, offset: int) -> int:
+        """带偏移读，不改变文件位置。"""
+        handle = emu.vfs.get_handle(fd)
+        if not handle:
+            return -EBADF
+        if offset < 0:
+            return -EINVAL
+        data = handle.node.read(offset, count)
+        if data:
+            emu.mu.mem_write(buf_addr, data)
+        return len(data)
+
+    def _pwrite64(self, emu: 'Emulator', fd: int, buf_addr: int, count: int, offset: int) -> int:
+        """带偏移写，不改变文件位置。"""
+        handle = emu.vfs.get_handle(fd)
+        if not handle:
+            return -EBADF
+        data = bytes(emu.mu.mem_read(buf_addr, count))
+        return handle.node.write(offset, data)
 
     def _write(self, emu: 'Emulator', fd: int, buf_addr: int, count: int) -> int:
         data = emu.mu.mem_read(buf_addr, count)

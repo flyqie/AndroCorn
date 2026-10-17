@@ -78,6 +78,12 @@ class StringArray(Array, metaclass=JavaClassDef, jvm_name="[Ljava/lang/String;",
     #
 #
 
+class LongArray(Array, metaclass=JavaClassDef, jvm_name="[J", jvm_super=Array):
+    def __init__(self, item_list):
+        Array.__init__(self, item_list)
+    #
+
+
 class IntArray(Array, metaclass=JavaClassDef, jvm_name="[I", jvm_super=Array):
     def __init__(self, item_list):
         Array.__init__(self, item_list)
